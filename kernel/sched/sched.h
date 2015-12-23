@@ -1509,6 +1509,77 @@ static inline void __add_nr_running(struct rq *rq, unsigned count)
 	}
 }
 
+#ifdef CONFIG_HIMA_HOTPLUG
+
+struct nr_stats_s {
+        /* time-based average load */
+        u64 nr_last_stamp;
+        unsigned int ave_nr_running;
+        seqcount_t ave_seqcnt;
+};
+
+#define NR_AVE_PERIOD_EXP       28
+#define NR_AVE_SCALE(x)         ((x) << FSHIFT)
+#define NR_AVE_PERIOD           (1 << NR_AVE_PERIOD_EXP)
+#define NR_AVE_DIV_PERIOD(x)    ((x) >> NR_AVE_PERIOD_EXP)
+
+DECLARE_PER_CPU(struct nr_stats_s, runqueue_stats);
+
+static inline unsigned int do_avg_nr_running(struct rq *rq)
+{
+
+        struct nr_stats_s *nr_stats = &per_cpu(runqueue_stats, rq->cpu);
+        unsigned int ave_nr_running = nr_stats->ave_nr_running;
+        s64 nr, deltax;
+
+        deltax = rq->clock_task - nr_stats->nr_last_stamp;
+        nr = NR_AVE_SCALE(rq->nr_running);
+
+        if (deltax > NR_AVE_PERIOD)
+                ave_nr_running = nr;
+        else
+                ave_nr_running +=
+                        NR_AVE_DIV_PERIOD(deltax * (nr - ave_nr_running));
+
+        return ave_nr_running;
+}
+#endif
+
+static inline void inc_nr_running(struct rq *rq)
+{
+#ifdef CONFIG_HIMA_HOTPLUG
+        struct nr_stats_s *nr_stats = &per_cpu(runqueue_stats, rq->cpu);
+#endif
+	sched_update_nr_prod(cpu_of(rq), 1, true);
+#ifdef CONFIG_HIMA_HOTPLUG
+        write_seqcount_begin(&nr_stats->ave_seqcnt);
+        nr_stats->ave_nr_running = do_avg_nr_running(rq);
+        nr_stats->nr_last_stamp = rq->clock_task;
+#endif
+	rq->nr_running++;
+
+#ifdef CONFIG_HIMA_HOTPLUG
+        write_seqcount_end(&nr_stats->ave_seqcnt);
+#endif
+
+#ifdef CONFIG_NO_HZ_FULL
+	if (rq->nr_running == 2) {
+		if (tick_nohz_full_cpu(rq->cpu)) {
+			/*
+			 * Tick is needed if more than one task runs on a CPU.
+			 * Send the target an IPI to kick it out of nohz mode.
+			 *
+			 * We assume that IPI implies full memory barrier and the
+			 * new value of rq->nr_running is visible on reception
+			 * from the target.
+			 */
+			/* smp_wmb() */
+			tick_nohz_full_kick_cpu(rq->cpu);
+		}
+#endif
+	}
+}
+
 static inline void __sub_nr_running(struct rq *rq, unsigned count)
 {
 	rq->nr_running -= count;
