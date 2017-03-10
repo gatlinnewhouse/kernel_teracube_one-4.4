@@ -228,10 +228,18 @@ static int disp_gamma_set_lut(const struct DISP_GAMMA_LUT_T __user *user_gamma_l
 		return -EFAULT;
 	}
 
+#ifdef CONFIG_MTK_KCAL_CTRL
+	if (virt_addr_valid(user_gamma_lut)) {
+		memcpy(gamma_lut, user_gamma_lut, sizeof(struct DISP_GAMMA_LUT_T));
+	} else
+#endif
 	if (copy_from_user(gamma_lut, user_gamma_lut, sizeof(struct DISP_GAMMA_LUT_T)) != 0) {
+		GAMMA_ERR("disp_gamma_set_lut: cannot copy from user mem");
 		ret = -EFAULT;
 		kfree(gamma_lut);
-	} else {
+	}
+
+	if (!ret) {
 		id = gamma_lut->hw_id;
 		if (id >= 0 && id < DISP_GAMMA_TOTAL) {
 			mutex_lock(&g_gamma_global_lock);
