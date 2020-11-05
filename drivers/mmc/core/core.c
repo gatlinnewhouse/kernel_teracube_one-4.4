@@ -73,7 +73,7 @@ static const unsigned freqs[] = { 400000, 300000, 200000, 100000 };
  * So we allow it it to be disabled.
  */
 bool use_spi_crc = 0;
-module_param(use_spi_crc, bool, 0);
+module_param(use_spi_crc, bool, 0644);
 
 #ifdef CONFIG_MTK_EMMC_CQ_SUPPORT
 static void mmc_enqueue_queue(struct mmc_host *host, struct mmc_request *mrq)
